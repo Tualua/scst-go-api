@@ -70,6 +70,16 @@ func returnIscsiTargetParams(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func returnIscsiTargetSessions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	params := scst_go.ScstListIscsiSessions(vars["id"])
+	fmt.Printf("Endpoint Hit: returnTargetParams, Target: %s\n", vars["id"])
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "    ")
+	enc.Encode(params)
+
+}
+
 func deleteDevice(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Endpoint Hit: deleteDevice")
 	reqBody, _ := ioutil.ReadAll(r.Body)
@@ -103,6 +113,7 @@ func handleRequests(cfg *Config) {
 	router.HandleFunc("/device/{id}", returnDeviceParams)
 	router.HandleFunc("/targets", returnIscsiTargets)
 	router.HandleFunc("/target/{id}", returnIscsiTargetParams)
+	router.HandleFunc("/target/{id}/sessions", returnIscsiTargetSessions)
 	log.Fatal(http.ListenAndServe(addrString, router))
 }
 

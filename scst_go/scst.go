@@ -286,14 +286,14 @@ func ScstCreateLun(lun ScstLun) map[string]string {
 	}
 }
 
-/*
 func ScstListIscsiSessions(target string) ScstResponse {
 	var (
 		res          ScstResponse
 		sessionsPath string
 		wwn          string
+		err          error
 	)
-	targets := ScstGetIscsiTargets()
+	targets := ScstGetIscsiTargets().DataList
 	for _, v := range targets {
 		if strings.Contains(v, target) {
 			wwn = v
@@ -302,13 +302,9 @@ func ScstListIscsiSessions(target string) ScstResponse {
 	}
 	if wwn != "" {
 		sessionsPath = path.Join(SCST_ISCSI_TARGETS, wwn, "sessions")
-		if sessionDir, err := os.Open(sessionsPath); err != nil {
+		if res.DataList, err = readFromDir(sessionsPath); err != nil {
 			res.Error = err
-			log.Println(err.Error())
-		} else {
-
 		}
 	}
 	return res
 }
-*/
