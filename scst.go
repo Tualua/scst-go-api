@@ -1,4 +1,4 @@
-package scst_go
+package main
 
 import (
 	"fmt"
