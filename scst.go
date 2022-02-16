@@ -17,17 +17,6 @@ const SCST_ISCSI_TARGETS string = SCST_ROOT_PATH + "/targets/iscsi"
 const SYSFS_SCST_DEV_MGMT string = SCST_ROOT_PATH + "/handlers/vdisk_blockio/mgmt"
 const SYSFS_SCST_LUNS_MGMT string = "/ini_groups/allowed_ini/luns/mgmt"
 
-type ScstLun struct {
-	Filename string `json:"filename"`
-	DevId    string `json:"devid"`
-}
-
-type ScstResponse struct {
-	Error    error             `json:"error"`
-	DataList []string          `json:"datalist"`
-	DataMap  map[string]string `json:"datamap"`
-}
-
 func readParamsFromDir(dirpath string) (map[string]string, error) {
 	var (
 		res map[string]string
@@ -79,6 +68,27 @@ func readFromDir(dirpath string) ([]string, error) {
 	return res, err
 }
 
+func listSubDirs(dirPath string) (res []string, err error) {
+	var (
+		dir        *os.File
+		dirContent []fs.DirEntry
+	)
+	if dir, err = os.Open(dirPath); err != nil {
+		log.Println(err.Error())
+	} else {
+		if dirContent, err = dir.ReadDir(0); err != nil {
+			log.Println(err.Error())
+		} else {
+			for _, v := range dirContent {
+				if v.IsDir() {
+					res = append(res, v.Name())
+				}
+			}
+		}
+	}
+	return
+}
+
 func ScstGetDevices() ([]string, error) {
 	var (
 		res         []string
@@ -100,75 +110,76 @@ func ScstGetDevices() ([]string, error) {
 }
 
 func ScstGetIscsiTargets() (res []string, err error) {
-	if res, err = readFromDir(SCST_ISCSI_TARGETS); err != nil {
+	if res, err = listSubDirs(SCST_ISCSI_TARGETS); err != nil {
 		log.Println(err.Error())
 	}
 	return res, err
 }
 
-func ScstGetDeviceParam(device string, param string) string {
+func ScstFindWwn(tgtId string) (res string, err error) {
 	var (
-		paramPath string
-		res       []string
-	)
-
-	paramPath = SCST_DEVICES + "/" + device + "/" + param
-	deviceParam, err := os.Open(paramPath)
-	if err != nil {
-		res = append(res, "")
-	} else {
-		deviceParamData, err := ioutil.ReadAll(deviceParam)
-		if err != nil {
-			res = append(res, "")
-		}
-		res = strings.Split(string(deviceParamData), "\n")
-	}
-	return res[0]
-
-}
-
-func ScstGetIscsiTargetParam(target string, param string) (res string, err error) {
-	var (
-		paramPath string
-		targets   []string
-		tgt       string
-		// res       []string
+		targets []string
 	)
 	if targets, err = ScstGetIscsiTargets(); err != nil {
 		log.Println(err.Error())
 	} else {
 		for _, v := range targets {
-			if strings.Contains(v, target) {
-				tgt = v
+			tgtId2 := strings.Split(v, ":")
+			if tgtId == tgtId2[len(tgtId2)-1] {
+				res = v
 				break
 			}
 		}
-		if tgt != "" {
-			paramPath = SCST_ISCSI_TARGETS + "/" + tgt + "/" + param
-			deviceParam, err := os.Open(paramPath)
-			if err != nil {
-				res = ""
-			} else {
-				deviceParamData, err := ioutil.ReadAll(deviceParam)
-				if err != nil {
-					res = ""
-				}
-				res = strings.Split(string(deviceParamData), "\n")[0]
-			}
-		} else {
-			res = "Target not found!"
+		if res == "" {
+			err = fmt.Errorf("target with id %s not found", tgtId)
 		}
 	}
-
 	return
 }
 
-func scstSetDeviceParam(device string, param string, val string) {
+func ScstGetDeviceParam(device string, param string) string {
 	var (
 		paramPath string
+		res       string
 	)
 
 	paramPath = SCST_DEVICES + "/" + device + "/" + param
+	deviceParam, err := os.Open(paramPath)
+	if err != nil {
+		res = ""
+	} else {
+		deviceParamData, err := ioutil.ReadAll(deviceParam)
+		if err != nil {
+			res = ""
+		}
+		res = strings.Split(string(deviceParamData), "\n")[0]
+	}
+	return res
+
+}
+
+func ScstGetIscsiTargetParam(wwn string, param string) (res string, err error) {
+	var (
+		paramPath string = SCST_ISCSI_TARGETS + "/" + wwn + "/" + param
+	)
+
+	if deviceParam, err := os.Open(paramPath); err != nil {
+		res = ""
+	} else {
+		if deviceParamData, err := ioutil.ReadAll(deviceParam); err != nil {
+			res = ""
+		} else {
+			res = strings.Split(string(deviceParamData), "\n")[0]
+		}
+	}
+	return
+}
+
+func scstSetDeviceParam(device string, param string, val string) (err error) {
+	var (
+		paramPath string = SCST_DEVICES + "/" + device + "/" + param
+	)
+
 	if deviceParam, err := os.OpenFile(paramPath, os.O_WRONLY, 0644); err != nil {
 		log.Println(err)
 	} else {
@@ -179,49 +190,34 @@ func scstSetDeviceParam(device string, param string, val string) {
 		}
 		log.Printf("Wrote %d bytes.\n", deviceParamW)
 	}
-
+	return
 }
 
-func ScstGetDeviceParams(device string) ScstResponse {
-	var (
-		res ScstResponse
-		err error
-	)
-	res.DataMap = make(map[string]string)
-	if res.DataMap, err = readParamsFromDir(path.Join(SCST_DEVICES, device)); err != nil {
-		res.Error = err
+func ScstGetDeviceParams(device string) (res map[string]string, err error) {
+
+	if res, err = readParamsFromDir(path.Join(SCST_DEVICES, device)); err != nil {
+		log.Println(err.Error())
 	}
-	return res
+	return
 }
 
-func ScstGetIscsiTargetParams(target string) ScstResponse {
+func ScstGetIscsiTargetParams(target string) (res map[string]string, err error) {
 	var (
-		res     ScstResponse
-		targets []string
-		wwn     string
-		err     error
+		wwn string
 	)
-	res.DataMap = make(map[string]string)
-	targets, err = ScstGetIscsiTargets()
-	for _, v := range targets {
-		if strings.Contains(v, target) {
-			wwn = v
-			break
+	res = make(map[string]string)
+	if wwn, err = ScstFindWwn(target); err != nil {
+		log.Println(err.Error())
+	} else {
+		if res, err = readParamsFromDir(path.Join(SCST_ISCSI_TARGETS, wwn)); err != nil {
+			log.Println(err.Error())
 		}
 	}
-	if wwn != "" {
-		if res.DataMap, err = readParamsFromDir(path.Join(SCST_ISCSI_TARGETS, wwn)); err != nil {
-			res.Error = err
-		}
-	}
-	return res
+	return
 }
 
 func ScstDeleteDevice(device string) (err error) {
-	var (
-	// res map[string]string
-	)
-	// res = make(map[string]string)
+
 	scstCmd := []byte("del_device " + device)
 	if mgmt, err := os.OpenFile(SYSFS_SCST_DEV_MGMT, os.O_WRONLY, 0644); err != nil {
 		log.Println(err.Error())
@@ -274,12 +270,11 @@ func ScstActivateDevice(device string) (err error) {
 	return
 }
 
-func ScstCreateLun(devId string, fileName string) error {
+func ScstCreateLun(devId string, fileName string) (err error) {
 	var (
 		lunPathMgmt string
 		wwn         string
 		targets     []string
-		err         error
 	)
 	if targets, err = ScstGetIscsiTargets(); err != nil {
 		log.Println(err.Error())
@@ -292,7 +287,7 @@ func ScstCreateLun(devId string, fileName string) error {
 		}
 		if wwn != "" {
 			if mgmt, err := os.OpenFile(SYSFS_SCST_DEV_MGMT, os.O_WRONLY, 0644); err != nil {
-				err = errors.New("Cannot open SCST device management interface!")
+				err = errors.New("cannot open SCST device management interface")
 				log.Println(err.Error())
 			} else {
 				defer mgmt.Close()
@@ -311,12 +306,15 @@ func ScstCreateLun(devId string, fileName string) error {
 							log.Println(err.Error())
 						} else {
 							log.Printf("LUN 0 with device %s exported via target %s\n", devId, wwn)
+							if err = scstSetDeviceParam(devId, "t10_vend_id", "FREE_TT"); err != nil {
+								log.Println(err.Error())
+							}
 						}
 					}
 				}
 			}
 		} else {
-			err = errors.New(fmt.Sprintf("Target %s not found!", devId))
+			err = fmt.Errorf("target %s not found", devId)
 			log.Println(err.Error())
 		}
 	}
@@ -327,23 +325,15 @@ func ScstListIscsiSessions(target string) (res []string, err error) {
 	var (
 		sessionsPath string
 		wwn          string
-		targets      []string
 	)
-	targets, err = ScstGetIscsiTargets()
-	for _, v := range targets {
-		s := strings.Split(v, ":")
-		if s[len(s)-1] == target {
-			wwn = v
-			break
-		}
-	}
-	if wwn != "" {
+	if wwn, err = ScstFindWwn(target); err != nil {
+		log.Println(err.Error())
+	} else {
 		sessionsPath = path.Join(SCST_ISCSI_TARGETS, wwn, "sessions")
 		if res, err = readFromDir(sessionsPath); err != nil {
 			log.Println(err.Error())
 		}
-	} else {
-		err = errors.New(fmt.Sprintf("Target with ID %s not found!", target))
 	}
+
 	return
 }

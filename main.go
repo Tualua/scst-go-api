@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -50,28 +48,40 @@ func apiListIscsiTargets(w http.ResponseWriter, r *http.Request) {
 		res.Success()
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-	enc.Encode(iscsiTargets)
+	res.Write(&w)
 }
 
 func apiGetDeviceParams(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	params := ScstGetDeviceParams(vars["id"])
-	fmt.Printf("Endpoint Hit: returnDeviceParams, Target: %s\n", vars["id"])
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-	enc.Encode(params)
+	var (
+		res    jsonResponseMapString
+		err    error
+		params map[string]string
+	)
+	res.SetAction("devparams")
+	if params, err = ScstGetDeviceParams(mux.Vars(r)["devid"]); err != nil {
+		res.Error(err.Error())
+	} else {
+		res.Success()
+		res.Data = params
+	}
+
+	res.Write(&w)
 
 }
 func apiListIscsiTargetParams(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	params := ScstGetIscsiTargetParams(vars["id"])
-	fmt.Printf("Endpoint Hit: returnTargetParams, Target: %s\n", vars["id"])
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-	enc.Encode(params)
-
+	var (
+		res    jsonResponseMapString
+		params map[string]string = make(map[string]string)
+		err    error
+	)
+	res.SetAction("iscsitargetparams")
+	if params, err = ScstGetIscsiTargetParams(mux.Vars(r)["tgtid"]); err != nil {
+		res.Error(err.Error())
+	} else {
+		res.Success()
+		res.Data = params
+	}
+	res.Write(&w)
 }
 
 func apiListIscsiSessions(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +89,7 @@ func apiListIscsiSessions(w http.ResponseWriter, r *http.Request) {
 		res jsonResponseList
 		err error
 	)
-	res.SetAction("iscsisession")
+	res.SetAction("iscsisessions")
 	if res.Data, err = ScstListIscsiSessions(mux.Vars(r)["tgtid"]); err != nil {
 		res.Error(err.Error())
 	} else {
@@ -90,7 +100,7 @@ func apiListIscsiSessions(w http.ResponseWriter, r *http.Request) {
 
 func apiDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	var (
-		res jsonResponseGeneric
+		res jsonResponseList
 		err error
 	)
 	res.SetAction("deletedev")
@@ -105,7 +115,7 @@ func apiDeleteDevice(w http.ResponseWriter, r *http.Request) {
 
 func apiActivateDevice(w http.ResponseWriter, r *http.Request) {
 	var (
-		res jsonResponseGeneric
+		res jsonResponseList
 		err error
 	)
 	res.SetAction("actdev")
@@ -119,7 +129,7 @@ func apiActivateDevice(w http.ResponseWriter, r *http.Request) {
 
 func apiDeactivateDevice(w http.ResponseWriter, r *http.Request) {
 	var (
-		res jsonResponseGeneric
+		res jsonResponseList
 		err error
 	)
 	res.SetAction("deactdev")
@@ -134,7 +144,7 @@ func apiDeactivateDevice(w http.ResponseWriter, r *http.Request) {
 func apiCreateLun(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		res jsonResponseGeneric
+		res jsonResponseList
 	)
 	res.SetAction("createlun")
 	if err = ScstCreateLun(mux.Vars(r)["devid"], mux.Vars(r)["filename"]); err != nil {
@@ -156,7 +166,7 @@ func run(cfg *Config) {
 	router.Path("/").Queries("action", "devparams", "devid", "{devid}").HandlerFunc(apiGetDeviceParams)
 	router.Path("/").Queries("action", "iscsitargets").HandlerFunc(apiListIscsiTargets)
 	router.Path("/").Queries("action", "iscsitargetparams", "tgtid", "{tgtid}").HandlerFunc(apiListIscsiTargetParams)
-	router.Path("/").Queries("action", "iscsisession", "tgtid", "{tgtid}").HandlerFunc(apiListIscsiSessions)
+	router.Path("/").Queries("action", "iscsisessions", "tgtid", "{tgtid}").HandlerFunc(apiListIscsiSessions)
 	router.Use(loggingMiddleware)
 	log.Fatal(http.ListenAndServe(addrString, router))
 }

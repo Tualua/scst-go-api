@@ -17,11 +17,9 @@ type jsonResponseList struct {
 	Data []string `json:"data"`
 }
 
-type jsonApi interface {
-	SetAction()
-	Status()
-	Error()
-	Write()
+type jsonResponseMapString struct {
+	jsonResponseGeneric
+	Data map[string]string `json:"data"`
 }
 
 func (j *jsonResponseGeneric) SetAction(action string) {
@@ -51,6 +49,12 @@ func (j *jsonResponseGeneric) Write(w *http.ResponseWriter) {
 }
 
 func (j *jsonResponseList) Write(w *http.ResponseWriter) {
+	enc := json.NewEncoder(*w)
+	enc.SetIndent("", "    ")
+	enc.Encode(j)
+}
+
+func (j *jsonResponseMapString) Write(w *http.ResponseWriter) {
 	enc := json.NewEncoder(*w)
 	enc.SetIndent("", "    ")
 	enc.Encode(j)
