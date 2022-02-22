@@ -212,6 +212,7 @@ func ScstGetIscsiTargetParams(target string) (res map[string]string, err error) 
 		if res, err = readParamsFromDir(path.Join(SCST_ISCSI_TARGETS, wwn)); err != nil {
 			log.Println(err.Error())
 		}
+		res["wwn"] = wwn
 	}
 	return
 }
